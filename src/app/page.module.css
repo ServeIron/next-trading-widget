@@ -1,0 +1,23 @@
+.app {
+  background-color: #1e222d;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  padding: 12px 16px;
+  background-color: #131722;
+  border-bottom: 1px solid #2a2e39;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.chartSection {
+  flex: 1;
+  overflow: hidden;
+}

@@ -1,0 +1,23 @@
+.chartContainer {
+  width: 100%;
+  position: relative;
+}
+
+.chartWrapper {
+  width: 100%;
+  position: relative;
+}
+
+.chartCanvas {
+  width: 100%;
+  position: relative;
+}
+
+.chartCanvasCrosshair {
+  cursor: crosshair;
+}
+
+.chartCanvasDefault {
+  cursor: default;
+}
+
