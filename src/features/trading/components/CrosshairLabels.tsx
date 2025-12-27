@@ -6,7 +6,8 @@ import styles from './CrosshairLabels.module.css';
 interface CrosshairLabelsProps {
   priceLabelRef: React.RefObject<HTMLDivElement>;
   timeLabelRef: React.RefObject<HTMLDivElement>;
-  tooltipRef: React.RefObject<HTMLDivElement>;
+  verticalLineRef: React.RefObject<HTMLDivElement>;
+  horizontalLineRef: React.RefObject<HTMLDivElement>;
 }
 
 /**
@@ -17,22 +18,23 @@ interface CrosshairLabelsProps {
 const CrosshairLabelsComponent = ({
   priceLabelRef,
   timeLabelRef,
-  tooltipRef,
+  verticalLineRef,
+  horizontalLineRef,
 }: CrosshairLabelsProps) => {
 
   return (
     <>
+      {/* Vertical crosshair line - follows mouse X position */}
+      <div ref={verticalLineRef} className={styles.verticalLine} style={{ display: 'none' }} />
+
+      {/* Horizontal crosshair line - follows mouse Y position */}
+      <div ref={horizontalLineRef} className={styles.horizontalLine} style={{ display: 'none' }} />
+
       {/* Price label - managed by useCrosshair hook via ref */}
       <div ref={priceLabelRef} className={styles.priceLabel} style={{ display: 'none' }} />
 
       {/* Time label - managed by useCrosshair hook via ref */}
       <div ref={timeLabelRef} className={styles.timeLabel} style={{ display: 'none' }} />
-
-      {/* Tooltip - always visible, managed by useCrosshair hook via ref */}
-      <div ref={tooltipRef} className={styles.tooltip} style={{ display: 'none', visibility: 'hidden' }}>
-        <span className={styles.tooltipIcon}>+</span>
-        <span>0.00</span>
-      </div>
     </>
   );
 };

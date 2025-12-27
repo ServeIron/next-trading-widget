@@ -49,20 +49,18 @@ export function useChartInitialization({
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
+        rightBarStaysOnScroll: true, // Keep rightmost bar visible when scrolling
+        rightOffset: 0, // No offset from right edge
       },
       crosshair: {
-        mode: 1, // Normal mode - shows both vertical and horizontal lines
+        mode: 1, // Keep mode 1 for crosshair events, but hide visual lines
         vertLine: {
-          color: CHART_COLORS.crosshair,
-          width: 1,
-          style: 0, // Solid
-          labelVisible: false, // Hide default label, we'll show custom one
+          visible: false, // Hide built-in vertical line - we use custom line
+          labelVisible: false,
         },
         horzLine: {
-          color: CHART_COLORS.crosshair,
-          width: 1,
-          style: 0, // Solid
-          labelVisible: false, // Hide default label, we'll show custom one
+          visible: false, // Hide built-in horizontal line - we use custom line
+          labelVisible: false,
         },
       },
       handleScroll: {
@@ -115,25 +113,45 @@ export function useChartInitialization({
     volumeSeriesRef.current = volumeSeries;
 
     // Resize observer for responsive design
+    let isDisposed = false;
     const resizeObserver = new ResizeObserver((entries) => {
       if (entries.length === 0 || entries[0].target !== containerRef.current) return;
-      if (!chartRef.current) return; // Check if chart is still valid
+      if (!chartRef.current || isDisposed) return; // Check if chart is still valid
       
       try {
         const newRect = entries[0].contentRect;
+        // Check if chart element still exists before applying options
+        const chartElement = chartRef.current.chartElement();
+        if (!chartElement) {
+          isDisposed = true;
+          return;
+        }
         chartRef.current.applyOptions({ width: newRect.width });
       } catch (err) {
-        // Chart might be disposed, ignore error
+        // Chart might be disposed, ignore error and mark as disposed
+        isDisposed = true;
         console.warn('Chart resize error (chart may be disposed):', err);
       }
     });
     resizeObserver.observe(containerRef.current);
 
     return () => {
+      // Disconnect resize observer first to prevent further callbacks
       resizeObserver.disconnect();
+      
+      // Mark as disposed to prevent any pending operations
+      isDisposed = true;
+      
       try {
         if (chartRef.current) {
-          chartRef.current.remove();
+          // Check if chart element still exists before removing
+          try {
+            chartRef.current.chartElement();
+            chartRef.current.remove();
+          } catch (err) {
+            // Chart already disposed or element doesn't exist
+            console.warn('Chart already disposed during cleanup:', err);
+          }
         }
       } catch (err) {
         // Ignore errors during cleanup

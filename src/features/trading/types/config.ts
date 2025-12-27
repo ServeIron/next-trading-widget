@@ -36,7 +36,9 @@ export interface TradingModuleConfig {
   defaultInterval?: string;
 
   /**
-   * Default chart height in pixels
+   * Minimum chart height in pixels
+   * Used as fallback when container size cannot be determined
+   * Also used as minimum threshold to prevent chart from being too small
    * @default 600
    */
   defaultHeight?: number;

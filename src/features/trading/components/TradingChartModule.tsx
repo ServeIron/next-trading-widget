@@ -5,14 +5,18 @@
  * PERFORMANCE OPTIMIZED: Memoized callbacks and optimized re-renders
  */
 
-import { useState, useEffect, useCallback, memo } from 'react';
+import { useState, useEffect, useCallback, memo, useRef, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { setApiConfig } from '../services/binance';
-import { SymbolSelectorWidget, IntervalSelectorWidget, LineAddWidget } from './widgets';
-import { PRESET_LINE_COLORS } from '../constants';
+import { useContainerSize } from '../hooks/useContainerSize';
+import { IntervalSelectorWidget, IndicatorSelectorWidget, SymbolAndOHLCWidget } from './widgets';
+import type { HoveredBarData } from '../types/ohlc';
+import { LineContextMenu } from './LineContextMenu';
+import { PRESET_LINE_COLORS, CHART_CONFIG } from '../constants';
 import type { TradingModuleConfig } from '../types/config';
 import type { KlineInterval } from '../types/binance';
 import type { HorizontalLineConfig } from '../types/lines';
+import type { IndicatorConfigUnion, IndicatorType } from '../types/indicators';
 import styles from './TradingChartModule.module.css';
 
 // Dynamic import for Chart component (client-side only, no SSR)
@@ -43,28 +47,33 @@ export interface TradingChartModuleProps {
  * PERFORMANCE OPTIMIZED: All callbacks memoized
  */
 const TradingChartModuleComponent = ({ config, className, style }: TradingChartModuleProps) => {
+  // Chart section ref for measuring available chart area
+  const chartSectionRef = useRef<HTMLDivElement>(null);
+  
   // Initialize API config on mount
   useEffect(() => {
     setApiConfig(config.api);
   }, [config.api]);
 
-  const [symbol, setSymbol] = useState<string>(config.defaultSymbol || 'BTCUSDT');
   const [interval, setIntervalState] = useState<KlineInterval>((config.defaultInterval as KlineInterval) || '1d');
-  const [chartHeight, setChartHeight] = useState<number>(config.defaultHeight || 600);
+  const symbol = config.defaultSymbol || 'BTCUSDT';
   const [horizontalLines, setHorizontalLines] = useState<HorizontalLineConfig[]>([]);
-  const [isLineAddingMode, setIsLineAddingMode] = useState<boolean>(false);
+  const [selectedIndicators, setSelectedIndicators] = useState<IndicatorType[]>([]);
+  const [hoveredBarData, setHoveredBarData] = useState<HoveredBarData | null>(null);
+  const [lastBarData, setLastBarData] = useState<HoveredBarData | null>(null);
+  
+  // Line context menu state
+  const [selectedLine, setSelectedLine] = useState<HorizontalLineConfig | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
 
-  // Calculate chart height based on window size (memoized resize handler)
-  useEffect(() => {
-    const headerHeight = config.headerHeight || 60;
-    const updateHeight = () => {
-      setChartHeight(window.innerHeight - headerHeight);
-    };
-
-    updateHeight();
-    window.addEventListener('resize', updateHeight);
-    return () => window.removeEventListener('resize', updateHeight);
-  }, [config.headerHeight]);
+  // Measure chart section size for plug-and-play functionality
+  // This automatically accounts for header height since we're measuring the chart section directly
+  const minHeight = config.defaultHeight || CHART_CONFIG.defaultHeight;
+  const { height: chartHeight } = useContainerSize({
+    containerRef: chartSectionRef,
+    headerHeight: 0, // No need to subtract header, we're measuring chart section directly
+    minHeight,
+  });
 
   // Memoized callbacks to prevent unnecessary re-renders
   const handleAddLineAtPrice = useCallback((price: number) => {
@@ -82,44 +91,105 @@ const TradingChartModuleComponent = ({ config, className, style }: TradingChartM
     });
   }, []);
 
-  const handleSymbolChange = useCallback((newSymbol: string) => {
-    setSymbol(newSymbol);
-  }, []);
-
   const handleIntervalChange = useCallback((newInterval: KlineInterval) => {
     setIntervalState(newInterval);
   }, []);
 
-  const handleToggleLineAdding = useCallback(() => {
-    setIsLineAddingMode((prev) => !prev);
+  // Convert selected indicator types to IndicatorConfigUnion
+  const indicatorConfigs = useMemo((): IndicatorConfigUnion[] => {
+    return selectedIndicators.map((type): IndicatorConfigUnion => {
+      switch (type) {
+        case 'MA':
+          return { type: 'MA', period: 20, color: '#ff9800', lineWidth: 2 };
+        case 'EMA':
+          return { type: 'EMA', period: 12, color: '#2196f3', lineWidth: 2 };
+        case 'RSI':
+          return { type: 'RSI', period: 14, color: '#9c27b0', lineWidth: 2 };
+        default:
+          return { type: 'MA', period: 20, color: '#ff9800', lineWidth: 2 };
+      }
+    });
+  }, [selectedIndicators]);
+
+  const handleIndicatorChange = useCallback((indicators: IndicatorType[]) => {
+    setSelectedIndicators(indicators);
+  }, []);
+
+  // Handle hovered bar data change
+  const handleHoveredBarDataChange = useCallback((data: HoveredBarData | null) => {
+    setHoveredBarData(data);
+  }, []);
+
+  // Handle last bar data change (for default display)
+  const handleLastBarDataChange = useCallback((data: HoveredBarData | null) => {
+    setLastBarData(data);
+  }, []);
+
+  // Handle line click - show context menu
+  const handleLineClick = useCallback((lineId: string, price: number, event: MouseEvent) => {
+    const line = horizontalLines.find((l) => l.id === lineId);
+    if (line) {
+      setSelectedLine(line);
+      setIsMenuOpen(true);
+    }
+  }, [horizontalLines]);
+
+  // Handle menu close
+  const handleMenuClose = useCallback(() => {
+    setIsMenuOpen(false);
+    setSelectedLine(null);
+  }, []);
+
+  // Handle delete line
+  const handleDeleteLine = useCallback((lineId: string) => {
+    setHorizontalLines((prev) => prev.filter((line) => line.id !== lineId));
+  }, []);
+
+  // Handle change color
+  const handleColorChange = useCallback((lineId: string, color: string) => {
+    setHorizontalLines((prev) =>
+      prev.map((line) => (line.id === lineId ? { ...line, color } : line))
+    );
   }, []);
 
   return (
     <div className={`${styles.module} ${className || ''}`} style={style}>
       {/* Header Bar - TradingView style */}
       <div className={styles.header}>
-        {/* Symbol Selector Widget */}
-        <SymbolSelectorWidget symbol={symbol} onSymbolChange={handleSymbolChange} />
-
         {/* Interval Selector Widget */}
         <IntervalSelectorWidget value={interval} onChange={handleIntervalChange} />
+        
+        {/* Indicator Selector Widget */}
+        <IndicatorSelectorWidget value={selectedIndicators} onChange={handleIndicatorChange} />
 
-        {/* Line Add Widget */}
-        <LineAddWidget isActive={isLineAddingMode} onToggle={handleToggleLineAdding} />
+        {/* Symbol and OHLC Widget */}
+        <SymbolAndOHLCWidget symbol={symbol} hoveredBarData={hoveredBarData} lastBarData={lastBarData} />
       </div>
 
       {/* Chart - Full height */}
-      <div className={styles.chartSection}>
+      <div ref={chartSectionRef} className={styles.chartSection}>
         <DynamicChart
           symbol={symbol}
           interval={interval}
           height={chartHeight}
-          indicators={[]}
+          indicators={indicatorConfigs}
           horizontalLines={horizontalLines}
           onAddLineAtPrice={handleAddLineAtPrice}
-          enableLineAdding={isLineAddingMode}
+          enableLineAdding={true}
+          onLineClick={handleLineClick}
+          onHoveredBarDataChange={handleHoveredBarDataChange}
+          onLastBarDataChange={handleLastBarDataChange}
         />
       </div>
+
+      {/* Line Context Menu */}
+      <LineContextMenu
+        open={isMenuOpen}
+        selectedLine={selectedLine}
+        onClose={handleMenuClose}
+        onDelete={handleDeleteLine}
+        onColorChange={handleColorChange}
+      />
     </div>
   );
 };

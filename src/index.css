@@ -16,3 +16,15 @@ body {
   width: 100%;
   height: 100%;
 }
+
+/* Hide Next.js watermark/logo in development */
+body > div[style*="position: fixed"][style*="bottom"] {
+  display: none !important;
+}
+
+/* Hide Next.js development indicator */
+[data-nextjs-toast],
+[data-nextjs-dialog],
+#__next-build-watcher {
+  display: none !important;
+}

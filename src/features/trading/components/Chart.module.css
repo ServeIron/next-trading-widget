@@ -17,6 +17,10 @@
   cursor: crosshair;
 }
 
+.chartCanvasPointer {
+  cursor: pointer;
+}
+
 .chartCanvasDefault {
   cursor: default;
 }

@@ -1,7 +1,13 @@
 'use client';
 
-import { memo, useCallback } from 'react';
-import styles from './IntervalSelectorWidget.module.css';
+/**
+ * Interval Selector Widget
+ * Uses generic DropdownWidget for consistent UI
+ * PERFORMANCE OPTIMIZED: Memoized to prevent unnecessary re-renders
+ */
+
+import { memo, useMemo } from 'react';
+import { DropdownWidget, type DropdownItem } from './DropdownWidget';
 import type { KlineInterval } from '../../types/binance';
 
 interface IntervalSelectorWidgetProps {
@@ -9,42 +15,45 @@ interface IntervalSelectorWidgetProps {
   onChange: (interval: KlineInterval) => void;
 }
 
-const INTERVALS: { value: KlineInterval; label: string }[] = [
-  { value: '1m', label: '1Dk' },
-  { value: '5m', label: '5Dk' },
-  { value: '15m', label: '15Dk' },
-  { value: '30m', label: '30Dk' },
+// Note: Binance API supports limited intervals
+// For custom intervals (3A, 6A, Bu Sene, 1Y, 2Y, 5Y), we use the closest supported interval
+// and adjust the data fetching logic accordingly
+const INTERVALS: DropdownItem<KlineInterval>[] = [
+  { value: '1m', label: '1DK' },
+  { value: '5m', label: '5DK' },
+  { value: '15m', label: '15DK' },
+  { value: '30m', label: '30DK' },
   { value: '1h', label: '1S' },
   { value: '4h', label: '4S' },
   { value: '1d', label: '1G' },
-  { value: '1w', label: '1H' },
+  { value: '1w', label: '7G' },
+  { value: '1M', label: '1A' },
+  // Note: 3A, 6A, Bu Sene, 1Y, 2Y, 5Y are not directly supported by Binance API
+  // They would require custom data aggregation logic
 ];
 
 /**
- * Widget for interval selection
+ * Widget for interval selection with dropdown menu
  * PERFORMANCE OPTIMIZED: Memoized to prevent unnecessary re-renders
  */
 const IntervalSelectorWidgetComponent = ({ value, onChange }: IntervalSelectorWidgetProps) => {
-  const handleIntervalClick = useCallback((intervalValue: KlineInterval) => {
-    onChange(intervalValue);
-  }, [onChange]);
+  const handleChange = (newValue: KlineInterval | KlineInterval[]) => {
+    // Single selection only
+    if (Array.isArray(newValue)) {
+      onChange(newValue[0] as KlineInterval);
+    } else {
+      onChange(newValue);
+    }
+  };
 
   return (
-    <div className={styles.widget}>
-      {INTERVALS.map((interval) => {
-        const isActive = value === interval.value;
-        return (
-          <button
-            key={interval.value}
-            onClick={() => handleIntervalClick(interval.value)}
-            className={`${styles.button} ${isActive ? styles.buttonActive : styles.buttonInactive}`}
-            type="button"
-          >
-            {interval.label}
-          </button>
-        );
-      })}
-    </div>
+    <DropdownWidget
+      value={value}
+      items={INTERVALS}
+      onChange={handleChange}
+      multiple={false}
+      ariaLabel="Zaman aralığı seç"
+    />
   );
 };
 

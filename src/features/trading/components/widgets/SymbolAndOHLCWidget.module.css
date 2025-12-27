@@ -1,0 +1,56 @@
+.widget {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0;
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  min-height: auto;
+}
+
+.symbol {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 8px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ohlcContainer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ohlcItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.ohlcLabel {
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+  min-width: 12px;
+  font-size: 9px;
+}
+
+.ohlcValue {
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 500;
+  font-family: 'Courier New', monospace;
+  font-size:12px;
+}
+
+.ohlcValue.positive {
+  color: #26a69a;
+}
+
+.ohlcValue.negative {
+  color: #ef5350;
+}
+

@@ -1,4 +1,6 @@
-export { SymbolSelectorWidget } from './SymbolSelectorWidget';
 export { IntervalSelectorWidget } from './IntervalSelectorWidget';
-export { LineAddWidget } from './LineAddWidget';
+export { IndicatorSelectorWidget } from './IndicatorSelectorWidget';
+export { SymbolAndOHLCWidget } from './SymbolAndOHLCWidget';
+export { DropdownWidget } from './DropdownWidget';
+export type { DropdownItem } from './DropdownWidget';
 

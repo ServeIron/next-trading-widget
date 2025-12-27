@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useMemo, memo, useCallback } from 'react';
+import { useEffect, useRef, useMemo, memo, useCallback, useState } from 'react';
 import type { Time } from 'lightweight-charts';
 import { useBinanceData } from '../hooks/useBinanceData';
 import { useChartMouseInteraction } from '../hooks/useChartMouseInteraction';
@@ -10,6 +10,10 @@ import { useChartVolume } from '../hooks/useChartVolume';
 import { useChartIndicators } from '../hooks/useChartIndicators';
 import { useChartLines } from '../hooks/useChartLines';
 import { useCrosshair } from '../hooks/useCrosshair';
+import { useChartLineInteraction } from '../hooks/useChartLineInteraction';
+import { useHoveredBarData } from '../hooks/useHoveredBarData';
+import type { HoveredBarData } from '../types/ohlc';
+import { getLastBarData } from '../utils/ohlc';
 import { calculateIndicator } from '../utils/indicators';
 import { ErrorOverlay } from './ErrorOverlay';
 import { LoadingOverlay } from './LoadingOverlay';
@@ -28,6 +32,9 @@ interface ChartProps {
   horizontalLines?: HorizontalLineConfig[];
   onAddLineAtPrice?: (price: number) => void;
   enableLineAdding?: boolean;
+  onLineClick?: (lineId: string, price: number, event: MouseEvent) => void;
+  onHoveredBarDataChange?: (data: HoveredBarData | null) => void;
+  onLastBarDataChange?: (data: HoveredBarData | null) => void;
 }
 
 /**
@@ -41,14 +48,20 @@ const ChartComponent = ({
   indicators = [],
   horizontalLines = [],
   onAddLineAtPrice,
-  enableLineAdding = true,
+  enableLineAdding = true, // Always enabled - click to add line
+  onLineClick,
+  onHoveredBarDataChange,
+  onLastBarDataChange,
 }: ChartProps) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   
   // Refs for crosshair labels (DOM manipulation, no re-render)
   const priceLabelRef = useRef<HTMLDivElement>(null);
   const timeLabelRef = useRef<HTMLDivElement>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
+  
+  // Refs for crosshair lines (DOM manipulation, no re-render)
+  const verticalLineRef = useRef<HTMLDivElement>(null);
+  const horizontalLineRef = useRef<HTMLDivElement>(null);
   
   // Refs for mouse interaction (no re-render on mouse move)
   const hoveredPriceRef = useRef<number | null>(null);
@@ -112,13 +125,14 @@ const ChartComponent = ({
     chart,
     series,
     chartContainer: chartContainerRef.current,
-    enableLineAdding: enableLineAdding && !loading && data.length > 0,
+    chartContainerRef: chartContainerRef,
+    enableLineAdding: enableLineAdding && !loading && data.length > 0, // Always enabled - click to add line
     onAddLine: onAddLineAtPrice,
     hoveredPriceRef,
     mousePositionRef,
   });
 
-  // Crosshair labels (optimized with refs + DOM manipulation)
+  // Crosshair labels and lines (optimized with refs + DOM manipulation)
   useCrosshair({
     chart,
     series,
@@ -126,8 +140,45 @@ const ChartComponent = ({
     hasData: data.length > 0,
     priceLabelRef,
     timeLabelRef,
-    tooltipRef,
+    verticalLineRef,
+    horizontalLineRef,
   });
+
+  // Line interaction (detect clicks on horizontal lines)
+  const [isHoveringLine, setIsHoveringLine] = useState<boolean>(false);
+  useChartLineInteraction({
+    chart,
+    series,
+    chartContainer: chartContainerRef.current,
+    chartContainerRef: chartContainerRef,
+    horizontalLines,
+    hasData: data.length > 0,
+    onLineClick,
+    onLineHover: setIsHoveringLine,
+  });
+
+  // Get hovered bar OHLC data
+  const { hoveredBarData } = useHoveredBarData({
+    chart,
+    series,
+    data,
+    hasData: data.length > 0,
+  });
+
+  // Notify parent of hovered bar data changes
+  useEffect(() => {
+    if (onHoveredBarDataChange) {
+      onHoveredBarDataChange(hoveredBarData);
+    }
+  }, [hoveredBarData, onHoveredBarDataChange]);
+
+  // Notify parent of last bar data changes (for default display)
+  useEffect(() => {
+    if (onLastBarDataChange) {
+      const lastBarData = getLastBarData(data);
+      onLastBarDataChange(lastBarData);
+    }
+  }, [data, onLastBarDataChange]);
 
   // Memoized callbacks
   const handleRetry = useCallback(() => {
@@ -137,10 +188,12 @@ const ChartComponent = ({
   // Memoized computed values
   const hasError = useMemo(() => error !== null && data.length === 0, [error, data.length]);
   const isLoading = useMemo(() => loading && data.length === 0 && !error, [loading, data.length, error]);
-  const chartCursorClass = useMemo(
-    () => (isHovering && enableLineAdding ? styles.chartCanvasCrosshair : styles.chartCanvasDefault),
-    [isHovering, enableLineAdding]
-  );
+  // Cursor management: pointer when hovering line, crosshair when hovering chart, default otherwise
+  const chartCursorClass = useMemo(() => {
+    if (isHoveringLine) return styles.chartCanvasPointer;
+    if (isHovering) return styles.chartCanvasCrosshair;
+    return styles.chartCanvasDefault;
+  }, [isHovering, isHoveringLine]);
 
   // Get hovered price from ref for display
   const hoveredPrice = hoveredPriceRef.current;
@@ -160,11 +213,12 @@ const ChartComponent = ({
         style={{ height: `${height}px` }}
       />
 
-      {/* Crosshair labels - optimized with refs, all managed by useCrosshair hook */}
+      {/* Crosshair labels and lines - optimized with refs, all managed by useCrosshair hook */}
       <CrosshairLabels
         priceLabelRef={priceLabelRef}
         timeLabelRef={timeLabelRef}
-        tooltipRef={tooltipRef}
+        verticalLineRef={verticalLineRef}
+        horizontalLineRef={horizontalLineRef}
       />
     </div>
   );

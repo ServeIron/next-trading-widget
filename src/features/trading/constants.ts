@@ -15,16 +15,18 @@ export const CHART_COLORS = {
   volumeDown: 'rgba(255, 73, 118, 0.3)', // Semi-transparent red for volume down
 } as const;
 
-// Preset Colors for Horizontal Lines
+// Preset Colors for Horizontal Lines (10 colors for color picker)
 export const PRESET_LINE_COLORS = [
-  '#4bffb5',
-  '#ff4976',
-  '#ff9800',
-  '#2196f3',
-  '#9c27b0',
-  '#00bcd4',
-  '#f44336',
-  '#e91e63',
+  '#4bffb5', // Cyan green
+  '#ff4976', // Pink
+  '#ff9800', // Orange
+  '#2196f3', // Blue
+  '#9c27b0', // Purple
+  '#00bcd4', // Cyan
+  '#f44336', // Red
+  '#e91e63', // Pink red
+  '#4caf50', // Green
+  '#ffeb3b', // Yellow
 ] as const;
 
 // Chart Configuration
@@ -36,20 +38,6 @@ export const CHART_CONFIG = {
   crosshairLabelTopOffset: 10,
   initialVisibleBars: 150, // Number of bars to show initially (zoomed in view)
 } as const;
-
-// Popular Trading Symbols
-export const POPULAR_SYMBOLS = [
-  'BTCUSDT',
-  'ETHUSDT',
-  'BNBUSDT',
-  'SOLUSDT',
-  'ADAUSDT',
-  'XRPUSDT',
-  'DOGEUSDT',
-  'DOTUSDT',
-  'MATICUSDT',
-  'AVAXUSDT',
-] as const;
 
 // Indicator Default Colors
 export const INDICATOR_DEFAULT_COLOR = '#ff9800';

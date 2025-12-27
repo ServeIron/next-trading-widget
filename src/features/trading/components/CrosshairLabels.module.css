@@ -1,16 +1,18 @@
 .priceLabel {
   position: absolute;
-  background-color: rgba(19, 23, 34, 0.9);
-  color: rgba(255, 255, 255, 0.9);
-  padding: 4px 8px;
+  background-color: #131722;
+  color: rgba(255, 255, 255, 0.95);
+  padding: 4px 10px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   pointer-events: none;
   z-index: 1000;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   white-space: nowrap;
-  transform: translateY(-50%);
+  transform: translateX(-100%) translateY(-50%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  font-family: 'Courier New', monospace;
 }
 
 .timeLabel {
@@ -47,5 +49,23 @@
 
 .tooltipIcon {
   font-size: 16px;
+}
+
+.verticalLine {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+  width: 1px;
+  background-color: rgba(255, 255, 255, 0.2);
+  transform: translateX(-50%);
+}
+
+.horizontalLine {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+  height: 1px;
+  background-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-50%);
 }
 

@@ -10,6 +10,7 @@ interface UseChartMouseInteractionOptions {
   chart: IChartApi | null;
   series: ISeriesApi<'Candlestick' | 'Line'> | null;
   chartContainer: HTMLElement | null;
+  chartContainerRef?: React.RefObject<HTMLElement | null>;
   enableLineAdding?: boolean;
   onAddLine?: (price: number) => void;
   hoveredPriceRef: React.RefObject<number | null>;
@@ -42,8 +43,8 @@ function calculatePriceFromMouseY(
 
     if (relativeY < 0 || relativeY > paneRect.height) return null;
 
-    const priceScale = series.priceScale();
-    const price = (priceScale as { coordinateToPrice: (y: number) => number | null }).coordinateToPrice(relativeY);
+    // Use series coordinateToPrice method (Lightweight Charts 4.0+)
+    const price = series.coordinateToPrice(relativeY);
 
     if (price !== null && isFinite(price) && price > 0) {
       return price;
@@ -77,6 +78,7 @@ export function useChartMouseInteraction({
   chart,
   series,
   chartContainer,
+  chartContainerRef,
   enableLineAdding = false,
   onAddLine,
   hoveredPriceRef,
@@ -94,12 +96,18 @@ export function useChartMouseInteraction({
     onAddLineRef.current = onAddLine;
   }, [onAddLine]);
 
+  // Get current container (prefer ref if provided, fallback to prop)
+  const getCurrentContainer = (): HTMLElement | null => {
+    return chartContainerRef?.current ?? chartContainer;
+  };
+
   // Track mouse Y position from container (always active for crosshair)
   useEffect(() => {
-    if (!chartContainer) return;
+    const currentContainer = getCurrentContainer();
+    if (!currentContainer) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      const rect = chartContainer.getBoundingClientRect();
+      const rect = currentContainer.getBoundingClientRect();
       mouseYRef.current = e.clientY - rect.top;
       
       // Update mouse position ref (no re-render)
@@ -111,17 +119,18 @@ export function useChartMouseInteraction({
       }
     };
 
-    chartContainer.addEventListener('mousemove', handleMouseMove);
+    currentContainer.addEventListener('mousemove', handleMouseMove);
 
     return () => {
-      chartContainer.removeEventListener('mousemove', handleMouseMove);
+      currentContainer.removeEventListener('mousemove', handleMouseMove);
     };
-  }, [chartContainer, mousePositionRef]);
+  }, [chartContainer, chartContainerRef, mousePositionRef]);
 
   // Subscribe to crosshair movement (throttled with RAF)
   // Always active to track price for crosshair label, regardless of line adding mode
   useEffect(() => {
-    if (!chart || !series || !chartContainer) {
+    const currentContainer = getCurrentContainer();
+    if (!chart || !series || !currentContainer) {
       setIsHovering(false);
       if (hoveredPriceRef.current !== null) {
         hoveredPriceRef.current = null;
@@ -130,24 +139,48 @@ export function useChartMouseInteraction({
     }
 
     const handler = (param: MouseEventParams) => {
+      // Check if chart is still valid before processing
+      try {
+        if (!chart || !chart.chartElement()) {
+          return;
+        }
+      } catch (err) {
+        // Chart is disposed, ignore
+        return;
+      }
+
       // Cancel previous RAF if exists
       if (rafIdRef.current !== null) {
         cancelAnimationFrame(rafIdRef.current);
       }
 
       rafIdRef.current = requestAnimationFrame(() => {
+        // Double-check chart is still valid inside RAF
+        try {
+          if (!chart || !chart.chartElement()) {
+            return;
+          }
+        } catch (err) {
+          // Chart is disposed, ignore
+          return;
+        }
+
         let price: number | null = null;
 
         // Primary method: Use mouse Y position from container
         if (mouseYRef.current !== null) {
-          price = calculatePriceFromMouseY(chart, series, chartContainer, mouseYRef.current);
+          try {
+            price = calculatePriceFromMouseY(chart, series, currentContainer, mouseYRef.current);
+          } catch (err) {
+            // Chart might be disposed, ignore
+            return;
+          }
         }
 
         // Fallback: use param.point.y for price
         if (price === null && param.point !== undefined) {
           try {
-            const priceScale = series.priceScale();
-            price = (priceScale as { coordinateToPrice: (y: number) => number | null }).coordinateToPrice(param.point.y);
+            price = series.coordinateToPrice(param.point.y);
             if (price === null || !isFinite(price) || price <= 0) {
               price = null;
             }
@@ -193,13 +226,18 @@ export function useChartMouseInteraction({
         console.warn('Failed to unsubscribe from crosshair move (chart may be disposed):', err);
       }
     };
-  }, [chart, series, chartContainer, hoveredPriceRef]);
+  }, [chart, series, chartContainer, chartContainerRef, hoveredPriceRef]);
 
   // Handle click to add line (only when line adding mode is enabled)
+  // Note: Line clicks are handled first by useChartLineInteraction (capture phase)
   const handleClick = useCallback(
     (event: MouseEvent) => {
+      const currentContainer = getCurrentContainer();
       // Only process clicks when line adding is enabled
-      if (!enableLineAdding || !chart || !series || !chartContainer || !onAddLineRef.current) return;
+      if (!enableLineAdding || !chart || !series || !currentContainer || !onAddLineRef.current) return;
+      
+      // Check if event was stopped by line click handler
+      if (event.defaultPrevented || !event.isTrusted) return;
 
       let price: number | null = null;
 
@@ -209,7 +247,7 @@ export function useChartMouseInteraction({
       } else {
         // Second try: Calculate from click Y position using container
         if (mouseYRef.current !== null) {
-          price = calculatePriceFromMouseY(chart, series, chartContainer, mouseYRef.current);
+          price = calculatePriceFromMouseY(chart, series, currentContainer, mouseYRef.current);
         }
 
         // Third try: Calculate from click event clientY
@@ -220,13 +258,12 @@ export function useChartMouseInteraction({
               const pricePane = chartElement.firstElementChild as HTMLElement;
               if (pricePane) {
                 const paneRect = pricePane.getBoundingClientRect();
-                const containerRect = chartContainer.getBoundingClientRect();
+                const containerRect = currentContainer.getBoundingClientRect();
                 const clickY = event.clientY;
                 const relativeY = clickY - paneRect.top;
 
                 if (relativeY >= 0 && relativeY <= paneRect.height) {
-                  const priceScale = series.priceScale();
-                  price = (priceScale as { coordinateToPrice: (y: number) => number | null }).coordinateToPrice(relativeY);
+                  price = series.coordinateToPrice(relativeY);
                 }
               }
             }
@@ -236,12 +273,12 @@ export function useChartMouseInteraction({
         }
 
         // Fourth try: Use container-relative Y position
-        if (price === null && chartContainer) {
+        if (price === null && currentContainer) {
           try {
-            const containerRect = chartContainer.getBoundingClientRect();
+            const containerRect = currentContainer.getBoundingClientRect();
             const clickY = event.clientY;
             const relativeY = clickY - containerRect.top;
-            price = calculatePriceFromMouseY(chart, series, chartContainer, relativeY);
+            price = calculatePriceFromMouseY(chart, series, currentContainer, relativeY);
           } catch (err) {
             console.error('Error calculating price from container:', err);
           }
@@ -253,19 +290,36 @@ export function useChartMouseInteraction({
         onAddLineRef.current(price);
       }
     },
-    [chart, series, chartContainer, enableLineAdding, hoveredPriceRef]
+    [chart, series, chartContainer, chartContainerRef, enableLineAdding, hoveredPriceRef]
   );
 
   useEffect(() => {
     if (!chart || !enableLineAdding || !onAddLineRef.current) return;
 
-    const container = chart.chartElement();
-    if (!container) return;
+    let container: HTMLElement | null = null;
+    let timeoutId: NodeJS.Timeout | null = null;
 
-    container.addEventListener('click', handleClick);
+    const setupClickListener = () => {
+      container = chart.chartElement();
+      if (container) {
+        container.addEventListener('click', handleClick, { passive: true });
+      } else {
+        // Retry after a short delay if chart element is not ready
+        timeoutId = setTimeout(() => {
+          setupClickListener();
+        }, 100);
+      }
+    };
+
+    setupClickListener();
 
     return () => {
-      container.removeEventListener('click', handleClick);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (container) {
+        container.removeEventListener('click', handleClick);
+      }
     };
   }, [chart, enableLineAdding, handleClick]);
 

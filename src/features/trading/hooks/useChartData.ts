@@ -46,24 +46,43 @@ export function useChartData({
 
       series.setData(chartData);
 
-      // Zoom to show last N bars instead of all data
-      const visibleBars = CHART_CONFIG.initialVisibleBars;
-      if (chartData.length > visibleBars) {
-        // Show last N bars
-        const startIndex = chartData.length - visibleBars;
-        const startTime = chartData[startIndex]?.time;
-        const endTime = chartData[chartData.length - 1]?.time;
+      // Reset scroll position and zoom to show last N bars
+      // Use requestAnimationFrame to ensure data is set before adjusting view
+      requestAnimationFrame(() => {
+        try {
+          const visibleBars = CHART_CONFIG.initialVisibleBars;
+          if (chartData.length > visibleBars) {
+            // Show last N bars - ensure right edge is visible
+            const startIndex = chartData.length - visibleBars;
+            const startTime = chartData[startIndex]?.time;
+            const endTime = chartData[chartData.length - 1]?.time;
 
-        if (startTime && endTime) {
-          chart.timeScale().setVisibleRange({
-            from: startTime,
-            to: endTime,
-          });
+            if (startTime && endTime) {
+              // Set visible range - this will show the last N bars
+              // The rightBarStaysOnScroll and rightOffset settings will keep the right edge visible
+              chart.timeScale().setVisibleRange({
+                from: startTime,
+                to: endTime,
+              });
+              
+              // Ensure we're scrolled to the right edge
+              // scrollToRealTime() scrolls to the latest data point
+              try {
+                chart.timeScale().scrollToRealTime();
+              } catch {
+                // scrollToRealTime might not be available, that's okay
+                // The setVisibleRange should position correctly
+              }
+            }
+          } else {
+            // If we have less data than visible bars, show all
+            chart.timeScale().fitContent();
+          }
+        } catch (err) {
+          // Chart might be disposed, ignore error
+          console.warn('Chart visible range update error (chart may be disposed):', err);
         }
-      } else {
-        // If we have less data than visible bars, show all
-        chart.timeScale().fitContent();
-      }
+      });
     } catch (err) {
       // Chart might be disposed, ignore error
       console.warn('Chart data update error (chart may be disposed):', err);

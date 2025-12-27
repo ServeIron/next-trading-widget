@@ -12,6 +12,8 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: false,
   },
+  // Hide Next.js watermark/logo
+  poweredByHeader: false,
 };
 
 module.exports = nextConfig;

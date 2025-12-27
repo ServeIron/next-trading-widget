@@ -15,7 +15,8 @@ interface UseCrosshairOptions {
   hasData: boolean;
   priceLabelRef: React.RefObject<HTMLDivElement>;
   timeLabelRef: React.RefObject<HTMLDivElement>;
-  tooltipRef: React.RefObject<HTMLDivElement>;
+  verticalLineRef: React.RefObject<HTMLDivElement>;
+  horizontalLineRef: React.RefObject<HTMLDivElement>;
 }
 
 interface UseCrosshairReturn {
@@ -34,22 +35,26 @@ export function useCrosshair({
   hasData,
   priceLabelRef,
   timeLabelRef,
-  tooltipRef,
+  verticalLineRef,
+  horizontalLineRef,
 }: UseCrosshairOptions): UseCrosshairReturn {
   const isVisibleRef = useRef<boolean>(false);
   const rafIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!chart || !series || !container || !hasData || !priceLabelRef.current || !timeLabelRef.current || !tooltipRef.current) {
-      // Hide labels
+    if (!chart || !series || !container || !hasData || !priceLabelRef.current || !timeLabelRef.current || !verticalLineRef.current || !horizontalLineRef.current) {
+      // Hide labels and lines
       if (priceLabelRef.current) {
         priceLabelRef.current.style.display = 'none';
       }
       if (timeLabelRef.current) {
         timeLabelRef.current.style.display = 'none';
       }
-      if (tooltipRef.current) {
-        tooltipRef.current.style.display = 'none';
+      if (verticalLineRef.current) {
+        verticalLineRef.current.style.display = 'none';
+      }
+      if (horizontalLineRef.current) {
+        horizontalLineRef.current.style.display = 'none';
       }
       isVisibleRef.current = false;
       return;
@@ -57,7 +62,8 @@ export function useCrosshair({
 
     const priceLabel = priceLabelRef.current;
     const timeLabel = timeLabelRef.current;
-    const tooltip = tooltipRef.current;
+    const verticalLine = verticalLineRef.current;
+    const horizontalLine = horizontalLineRef.current;
     let mouseY: number | null = null;
     let mouseX: number | null = null;
 
@@ -72,12 +78,32 @@ export function useCrosshair({
 
     // Throttled crosshair handler using requestAnimationFrame
     const crosshairHandler = (param: MouseEventParams) => {
+      // Check if chart is still valid before processing
+      try {
+        if (!chart || !chart.chartElement()) {
+          return;
+        }
+      } catch (err) {
+        // Chart is disposed, ignore
+        return;
+      }
+
       // Cancel previous RAF if exists
       if (rafIdRef.current !== null) {
         cancelAnimationFrame(rafIdRef.current);
       }
 
       rafIdRef.current = requestAnimationFrame(() => {
+        // Double-check chart is still valid inside RAF
+        try {
+          if (!chart || !chart.chartElement()) {
+            return;
+          }
+        } catch (err) {
+          // Chart is disposed, ignore
+          return;
+        }
+
         let calculatedPrice: number | null = null;
         let timeStr: string | null = null;
         let priceX = 0;
@@ -85,55 +111,11 @@ export function useCrosshair({
         let timeX = 0;
         let timeY = CHART_CONFIG.crosshairLabelTopOffset;
 
-        console.log('[Crosshair] param received:', {
-          hasSeriesData: param.seriesData?.size > 0,
-          seriesDataSize: param.seriesData?.size || 0,
-          hasPoint: !!param.point,
-          point: param.point,
-          hasTime: !!param.time,
-          time: param.time,
-        });
+        // Removed debug logs for better performance
 
-        // PRIMARY METHOD: Get price from seriesData (most reliable)
-        if (param.seriesData && param.seriesData.size > 0) {
-          console.log('[Crosshair] Processing seriesData, size:', param.seriesData.size);
-          for (const [series, seriesData] of param.seriesData) {
-            console.log('[Crosshair] Series data:', { series: series?.seriesType(), data: seriesData });
-            if (seriesData && typeof seriesData === 'object') {
-              if ('close' in seriesData && typeof seriesData.close === 'number') {
-                calculatedPrice = seriesData.close;
-                console.log('[Crosshair] Found price from close:', calculatedPrice);
-                break;
-              }
-              if ('value' in seriesData && typeof seriesData.value === 'number') {
-                calculatedPrice = seriesData.value;
-                console.log('[Crosshair] Found price from value:', calculatedPrice);
-                break;
-              }
-            }
-          }
-
-          // Set priceX and priceY when we have price from seriesData
-          if (calculatedPrice !== null) {
-            const containerRect = container.getBoundingClientRect();
-            
-            // Use param.point.y if available, otherwise use mouseY
-            if (param.point && param.point.y !== undefined) {
-              priceY = param.point.y;
-              priceX = containerRect.width - CHART_CONFIG.crosshairLabelOffset;
-              console.log('[Crosshair] Using param.point for position:', { priceX, priceY });
-            } else if (mouseY !== null) {
-              priceY = mouseY;
-              priceX = containerRect.width - CHART_CONFIG.crosshairLabelOffset;
-              console.log('[Crosshair] Using mouseY for position:', { priceX, priceY });
-            }
-          }
-        } else {
-          console.log('[Crosshair] No seriesData available');
-        }
-
-        // FALLBACK: Calculate price from mouse Y position
-        if (calculatedPrice === null && mouseY !== null) {
+        // PRIMARY METHOD: Calculate price from mouse Y position (TradingView style)
+        // This gives the exact price at the mouse cursor position, not just the bar's close price
+        if (mouseY !== null) {
           try {
             const chartElement = chart.chartElement();
             if (chartElement) {
@@ -144,15 +126,17 @@ export function useCrosshair({
                 const relativeY = mouseY - (paneRect.top - containerRect.top);
 
                 if (relativeY >= 0 && relativeY <= paneRect.height) {
-                  // Use chart's price scale coordinateToPrice method
-                  const priceScale = chart.priceScale('right');
-                  if (priceScale && typeof (priceScale as { coordinateToPrice?: (y: number) => number | null }).coordinateToPrice === 'function') {
-                    calculatedPrice = (priceScale as { coordinateToPrice: (y: number) => number | null }).coordinateToPrice(relativeY);
-                  }
+                  // Use series coordinateToPrice method (Lightweight Charts 4.0+)
+                  calculatedPrice = series.coordinateToPrice(relativeY);
 
                   if (calculatedPrice !== null && isFinite(calculatedPrice) && calculatedPrice > 0) {
-                    priceX = containerRect.width - CHART_CONFIG.crosshairLabelOffset;
-                    priceY = mouseY;
+                    // Position price label on the right side, aligned with price scale
+                    // Price scale is on the right side of the chart
+                    const containerRect = container.getBoundingClientRect();
+                    // Position at right edge, label will be translated left by 100% (its own width)
+                    // This places it just to the left of the price scale
+                    priceX = containerRect.width - 4; // Small offset from right edge
+                    priceY = mouseY; // Align with crosshair Y position
                   }
                 }
               }
@@ -165,23 +149,15 @@ export function useCrosshair({
           }
         }
 
-        // FINAL FALLBACK: Use param.point.y if available
-        if (calculatedPrice === null && param.point) {
+        // FALLBACK: Use param.point.y if mouseY calculation failed
+        if (calculatedPrice === null && param.point && param.point.y !== undefined) {
           try {
-            const containerRect = container.getBoundingClientRect();
-            priceX = containerRect.width - CHART_CONFIG.crosshairLabelOffset;
-            priceY = param.point.y;
-            
-            // Try to get price from series data at this point
-            if (param.seriesData && param.seriesData.size > 0) {
-              for (const [, seriesData] of param.seriesData) {
-                if (seriesData && typeof seriesData === 'object') {
-                  if ('close' in seriesData && typeof seriesData.close === 'number') {
-                    calculatedPrice = seriesData.close;
-                    break;
-                  }
-                }
-              }
+            calculatedPrice = series.coordinateToPrice(param.point.y);
+
+            if (calculatedPrice !== null && isFinite(calculatedPrice) && calculatedPrice > 0) {
+              const containerRect = container.getBoundingClientRect();
+              priceX = containerRect.width - CHART_CONFIG.crosshairLabelOffset;
+              priceY = param.point.y;
             }
           } catch (err) {
             // Ignore errors
@@ -211,75 +187,19 @@ export function useCrosshair({
         }
 
         // Direct DOM manipulation (no React re-render)
-        console.log('[Crosshair] Final calculatedPrice:', calculatedPrice, 'priceX:', priceX, 'priceY:', priceY);
-        
         if (calculatedPrice !== null && isFinite(calculatedPrice) && calculatedPrice > 0) {
-          console.log('[Crosshair] Setting price label, price:', calculatedPrice.toFixed(2));
-          priceLabel.textContent = calculatedPrice.toFixed(2);
+          // Format price with appropriate decimal places
+          const formattedPrice = calculatedPrice >= 1 
+            ? calculatedPrice.toFixed(2) 
+            : calculatedPrice.toFixed(6);
+          
+          priceLabel.textContent = formattedPrice;
           priceLabel.style.display = 'block';
           priceLabel.style.left = `${priceX}px`;
-          priceLabel.style.top = `${priceY - CHART_CONFIG.crosshairLabelTopOffset}px`;
+          priceLabel.style.top = `${priceY}px`; // Align with crosshair Y position (transform will center it)
           isVisibleRef.current = true;
-
-          // Update tooltip position (next to price label, at the junction of chart and price scale)
-          if (tooltip) {
-            const containerRect = container.getBoundingClientRect();
-            // Position tooltip at the junction: left of price label (chart side)
-            // Price label is at: containerRect.left + priceX (relative to container)
-            // Tooltip uses fixed positioning, so we need absolute coordinates
-            // Position tooltip at price label's left edge, then translate left by 100% (its own width)
-            const tooltipX = containerRect.left + priceX;
-            const tooltipY = containerRect.top + priceY - CHART_CONFIG.crosshairLabelTopOffset;
-
-            console.log('[Crosshair] Setting tooltip:', {
-              tooltipExists: !!tooltip,
-              tooltipX,
-              tooltipY,
-              containerRect: { left: containerRect.left, top: containerRect.top, width: containerRect.width },
-              priceX,
-              priceY,
-              calculatedPrice,
-            });
-
-            // Ensure tooltip is visible
-            tooltip.style.display = 'flex';
-            tooltip.style.visibility = 'visible';
-            tooltip.style.opacity = '1';
-            tooltip.style.left = `${tooltipX}px`;
-            tooltip.style.top = `${tooltipY}px`;
-            tooltip.style.transform = 'translateX(-100%) translateY(-50%)';
-            tooltip.style.zIndex = '1001';
-
-            // Update price text
-            const priceText = tooltip.querySelector('span:last-child');
-            if (priceText) {
-              priceText.textContent = calculatedPrice.toFixed(2);
-              console.log('[Crosshair] Tooltip price text updated to:', calculatedPrice.toFixed(2));
-            } else {
-              console.warn('[Crosshair] Price text span not found in tooltip!');
-            }
-
-            // Verify tooltip is actually visible
-            const computedStyle = window.getComputedStyle(tooltip);
-            console.log('[Crosshair] Tooltip computed styles:', {
-              display: computedStyle.display,
-              visibility: computedStyle.visibility,
-              opacity: computedStyle.opacity,
-              left: computedStyle.left,
-              top: computedStyle.top,
-              transform: computedStyle.transform,
-              zIndex: computedStyle.zIndex,
-            });
-          } else {
-            console.warn('[Crosshair] Tooltip element is null!');
-          }
         } else {
-          console.log('[Crosshair] No valid price, hiding labels');
           priceLabel.style.display = 'none';
-          if (tooltip) {
-            tooltip.style.display = 'none';
-            tooltip.style.visibility = 'hidden';
-          }
         }
 
         if (timeStr !== null) {
@@ -289,6 +209,59 @@ export function useCrosshair({
           timeLabel.style.top = `${timeY}px`;
         } else {
           timeLabel.style.display = 'none';
+        }
+
+        // Update crosshair lines position (follow mouse)
+        if (mouseX !== null && mouseY !== null) {
+          try {
+            const chartElement = chart.chartElement();
+            if (chartElement) {
+              const pricePane = chartElement.firstElementChild as HTMLElement;
+              if (pricePane) {
+                const paneRect = pricePane.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                
+                // Calculate mouse position relative to container
+                const containerMouseX = mouseX;
+                const containerMouseY = mouseY;
+                
+                // Calculate pane position relative to container
+                const paneLeft = paneRect.left - containerRect.left;
+                const paneTop = paneRect.top - containerRect.top;
+                
+                // Check if mouse is within chart pane bounds
+                const paneRelativeX = containerMouseX - paneLeft;
+                const paneRelativeY = containerMouseY - paneTop;
+
+                if (paneRelativeX >= 0 && paneRelativeX <= paneRect.width && 
+                    paneRelativeY >= 0 && paneRelativeY <= paneRect.height) {
+                  // Show and position vertical line (follows mouse X)
+                  verticalLine.style.display = 'block';
+                  verticalLine.style.left = `${containerMouseX}px`;
+                  verticalLine.style.top = `${paneTop}px`;
+                  verticalLine.style.height = `${paneRect.height}px`;
+
+                  // Show and position horizontal line (follows mouse Y)
+                  horizontalLine.style.display = 'block';
+                  horizontalLine.style.left = `${paneLeft}px`;
+                  horizontalLine.style.top = `${containerMouseY}px`;
+                  horizontalLine.style.width = `${paneRect.width}px`;
+                } else {
+                  // Hide lines if mouse is outside chart pane
+                  verticalLine.style.display = 'none';
+                  horizontalLine.style.display = 'none';
+                }
+              }
+            }
+          } catch (err) {
+            // Chart might be disposed, hide lines
+            verticalLine.style.display = 'none';
+            horizontalLine.style.display = 'none';
+          }
+        } else {
+          // Hide lines if mouse position is not available
+          verticalLine.style.display = 'none';
+          horizontalLine.style.display = 'none';
         }
       });
     };
@@ -302,16 +275,15 @@ export function useCrosshair({
     }
 
     const handleMouseLeave = () => {
-      // Hide labels on mouse leave
+      // Hide labels and lines on mouse leave
       if (rafIdRef.current !== null) {
         cancelAnimationFrame(rafIdRef.current);
         rafIdRef.current = null;
       }
       priceLabel.style.display = 'none';
       timeLabel.style.display = 'none';
-      if (tooltipRef.current) {
-        tooltipRef.current.style.display = 'none';
-      }
+      if (verticalLine) verticalLine.style.display = 'none';
+      if (horizontalLine) horizontalLine.style.display = 'none';
       isVisibleRef.current = false;
     };
 
@@ -331,7 +303,7 @@ export function useCrosshair({
         console.warn('Failed to unsubscribe from crosshair (chart may be disposed):', err);
       }
     };
-  }, [chart, series, container, hasData, priceLabelRef, timeLabelRef, tooltipRef]);
+  }, [chart, series, container, hasData, priceLabelRef, timeLabelRef, verticalLineRef, horizontalLineRef]);
 
   return {
     isVisible: isVisibleRef.current,
